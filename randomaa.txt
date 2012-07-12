@@ -1,0 +1,27 @@
+files: 10 
+fileprefix: randomaa
+seqs/file:  5
+length distribution: random     # or 'normal'
+min/max length: 100 10000       # absolute cut offs
+normal mean/stddev: 4900 1000   # used for 'normal' len distribution only
+aa distribution:                # must sum to 1.00 (program will check)
+a 0.05
+r 0.05
+n 0.05
+d 0.05
+c 0.05
+e 0.05
+q 0.05
+g 0.05
+h 0.05
+i 0.05
+l 0.05
+k 0.05
+m 0.05
+f 0.05
+p 0.05
+s 0.05
+t 0.05
+w 0.05
+y 0.05
+v 0.05
