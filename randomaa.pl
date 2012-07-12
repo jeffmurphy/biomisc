@@ -11,7 +11,7 @@ $cfgfn ||= "randomaa.txt";
 my $cfg = read_config($cfgfn);
 $cfg->{dtable} = make_dist_table($cfg->{aadist});
 
-print Dumper($cfg) . "\n";
+#print Dumper($cfg) . "\n";
 
 for(my $nf = 1; $nf <= $cfg->{files} ; $nf++) {
     my $ofn = $cfg->{fileprefix} . "${nf}.fasta";
@@ -93,14 +93,14 @@ sub make_seq {
 # a 0.25
 # b 0.50
 # c 0.20
-# d 0.10
+# d 0.15
 #
 # produce an array like:
 #
 # [ a, a, a (25 times),
 #   b, b, b, (50 times)
 #   c, c, c, (20 times),
-#   d, d, d, (10 times) ]
+#   d, d, d, (15 times) ]
 #
 # allowing us to pick a random number (1-100) and map it into
 # our distribution
