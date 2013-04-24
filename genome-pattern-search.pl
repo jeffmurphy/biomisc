@@ -359,7 +359,7 @@ sub cache_nonbacteria {
 
 			if ( $lsize != $rsize ) {
 				print "[updating cached copy]\t";
-				$ftp->get( "$rd/protein/protein.fa.gz", "$rd-protein.fa.gz" );
+				$ftp->get( "$rd/protein/protein.fa.gz", $lprotfile );
 				print "[done]\n";
 			}
 			else {
