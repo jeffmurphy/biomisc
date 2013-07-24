@@ -1,4 +1,5 @@
 #!/usr/bin/perl -w
+
 use strict;
 use Net::FTP;
 use Getopt::Long qw(:config no_ignore_case bundling);
@@ -9,7 +10,7 @@ use Data::Dumper;
 use IO::File;
 use IO::Uncompress::AnyUncompress;
 
-my $VERSION = 2013041701;
+my $VERSION = 2013072401;
 
 my $_cfg = {
 	'cache'               => "/tmp/nihprots",
@@ -19,6 +20,7 @@ my $_cfg = {
 	'user'                => 'anonymous',
 	'pass'                => 'anonymous@',
 	'patterns'            => [],
+	'pattern_mode'        => 'any',
 	'bacteria_species'    => [''],
 	'nonbacteria_species' => ['.*']
 };
@@ -37,6 +39,7 @@ my $gor = GetOptions(
 	"user|u=s"     => \$_cfg->{user},
 	"pass|p=s"     => \$_cfg->{pass},
 	"lifespan|l=s" => \$_cfg->{cache_lifespan},
+	"mode|m=s"     => \$_cfg->{pattern_mode},
 	"force|f"      => \$force_recache,
 	"output|o=s"   => \$output_file,
 	"version|v"    => \$version,
@@ -50,14 +53,12 @@ usage() if ( $help || !defined($output_file) );
 if ( $config_file && -r $config_file ) {
 	my $cfg = new Config::Simple($config_file);
 
-	foreach
-	  my $_scalar ( 'cache', 'debug', 'cache_lifespan', 'url', 'user', 'pass' )
+	foreach my $_scalar ( 'cache', 'debug', 'cache_lifespan', 'url', 'user', 'pass', 'pattern_mode' )
 	{
 		$_cfg->{$_scalar} = $cfg->param($_scalar) if ( $cfg->param($_scalar) );
 	}
 
-	foreach
-	  my $_maybealist ( 'patterns', 'bacteria_species', 'nonbacteria_species' )
+	foreach my $_maybealist ( 'patterns', 'bacteria_species', 'nonbacteria_species' )
 	{
 		my @x = $cfg->param($_maybealist);
 		$_cfg->{$_maybealist} = \@x;
@@ -122,7 +123,9 @@ sub process_nonbacteria {
 	my $match_count   = {};
 
 	my $seqpats = join( '|', @$_seqpats );
-
+	my @seqpats = ($seqpats);
+	@seqpats = @$_seqpats if ($_cfg->{pattern_mode} eq "each");
+	
 	foreach my $fn ( sort @fns ) {
 		if ( $fn =~ /$fnpat/ ) {
 			$file_count++;
@@ -145,10 +148,14 @@ sub process_nonbacteria {
 					  . $so->desc()
 					  . " in file $fn\n";
 				}
+				
 				$species_count->{$speciesid}++;
 				my $seq = $so->seq();
-				if ( $seq =~ /$seqpats/ ) {
-					$match_count->{$speciesid}++;
+				
+				foreach my $_pat (@seqpats) {
+					if ( $seq =~ /$_pat/ ) {
+						$match_count->{$speciesid}->{$_pat}++;
+					}
 				}
 			}
 		}
@@ -158,16 +165,18 @@ sub process_nonbacteria {
 	
 	my $fh = new IO::File $output_file, "w";
 	if ( defined $fh ) {
-		print $fh "species,#genes,#matches,percentage\n";
+		print $fh "species,pattern,#genes,#matches,percentage\n";
 
 		foreach my $species ( sort keys %$match_count ) {
-			my $p = sprintf( "%8.8f",
-				$match_count->{$species} / $species_count->{$species} );
-			print $fh join( ',',
-				$species,
-				$species_count->{$species},
-				$match_count->{$species}, $p )
-			  . "\n";
+			foreach my $pattern_matched (sort keys %{$match_count->{$species}}) {
+				my $p = sprintf( "%8.8f",
+					$match_count->{$species}->{$pattern_matched} / $species_count->{$species} );
+				print $fh join( ',',
+					$species, $pattern_matched,
+					$species_count->{$species},
+					$match_count->{$species}->{$pattern_matched}, $p )
+			  	. "\n";
+			}
 		}
 		undef $fh;
 	}
@@ -197,7 +206,9 @@ sub process_bacteria {
 	my $match_count   = {};
 
 	my $seqpats = join( '|', @$_seqpats );
-
+	my @seqpats = ($seqpats);
+	@seqpats = @$_seqpats if ($_cfg->{pattern_mode} eq "each");
+	
 	foreach my $fn ( sort @fns ) {
 		if ( $fn =~ /$fnpat/ ) {
 			$file_count++;
@@ -223,10 +234,14 @@ sub process_bacteria {
 					  . " in file $fn\n";
 				}
 				$species_count->{$speciesid}++;
+				
 				my $seq = $so->seq();
-				if ( $seq =~ /$seqpats/ ) {
-					$match_count->{$speciesid}++;
-				}
+				
+                                foreach my $_pat (@seqpats) {
+                                        if ( $seq =~ /$_pat/ ) {
+                                                $match_count->{$speciesid}->{$_pat}++;
+                                        }
+                                }
 			}
 		}
 	}
@@ -235,16 +250,18 @@ sub process_bacteria {
 
 	my $fh = new IO::File $output_file, "a";
 	if ( defined $fh ) {
-		print $fh "species,#genes,#matches,percentage\n" unless $column_header;
+		print $fh "species,pattern,#genes,#matches,percentage\n" unless $column_header;
 
 		foreach my $species ( sort keys %$match_count ) {
-			my $p = sprintf( "%8.8f",
-				$match_count->{$species} / $species_count->{$species} );
-			print $fh join( ',',
-				$species,
-				$species_count->{$species},
-				$match_count->{$species}, $p )
-			  . "\n";
+			foreach my $pattern_matched (sort keys %{$match_count->{$species}}) {
+				my $p = sprintf( "%8.8f",
+					$match_count->{$species}->{$pattern_matched} / $species_count->{$species} );
+				print $fh join( ',',
+					$species, $pattern_matched,
+					$species_count->{$species},
+					$match_count->{$species}->{$pattern_matched}, $p )
+			  	. "\n";
+			}
 		}
 		undef $fh;
 	}
