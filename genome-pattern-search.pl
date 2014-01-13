@@ -53,12 +53,16 @@ usage() if ( $help || !defined($output_file) );
 if ( $config_file && -r $config_file ) {
 	my $cfg = new Config::Simple($config_file);
 
-	foreach my $_scalar ( 'cache', 'debug', 'cache_lifespan', 'url', 'user', 'pass', 'pattern_mode' )
+	foreach my $_scalar (
+		'cache', 'debug', 'cache_lifespan', 'url',
+		'user',  'pass',  'pattern_mode'
+	  )
 	{
 		$_cfg->{$_scalar} = $cfg->param($_scalar) if ( $cfg->param($_scalar) );
 	}
 
-	foreach my $_maybealist ( 'patterns', 'bacteria_species', 'nonbacteria_species' )
+	foreach
+	  my $_maybealist ( 'patterns', 'bacteria_species', 'nonbacteria_species' )
 	{
 		my @x = $cfg->param($_maybealist);
 		$_cfg->{$_maybealist} = \@x;
@@ -72,7 +76,7 @@ if ( $#pats > -1 ) {
 
 if ( !-d $_cfg->{cache} ) {
 	mkdir $_cfg->{cache};
-	$force_recache = 1;	
+	$force_recache = 1;
 }
 
 my ( $host, $rdir ) = process_url( $_cfg->{url} );
@@ -124,8 +128,8 @@ sub process_nonbacteria {
 
 	my $seqpats = join( '|', @$_seqpats );
 	my @seqpats = ($seqpats);
-	@seqpats = @$_seqpats if ($_cfg->{pattern_mode} eq "each");
-	
+	@seqpats = @$_seqpats if ( $_cfg->{pattern_mode} eq "each" );
+
 	foreach my $fn ( sort @fns ) {
 		if ( $fn =~ /$fnpat/ ) {
 			$file_count++;
@@ -148,11 +152,12 @@ sub process_nonbacteria {
 					  . $so->desc()
 					  . " in file $fn\n";
 				}
-				
+
 				$species_count->{$speciesid}++;
 				my $seq = $so->seq();
-				
+
 				foreach my $_pat (@seqpats) {
+					$match_count->{$speciesid}->{$_pat} += 0;
 					if ( $seq =~ /$_pat/ ) {
 						$match_count->{$speciesid}->{$_pat}++;
 					}
@@ -162,35 +167,38 @@ sub process_nonbacteria {
 	}
 
 	D( 1, "nonbac filecount=$file_count seq_count=$seq_count\n" );
-	
+
 	my $fh = new IO::File $output_file, "w";
 	if ( defined $fh ) {
 		print $fh "species,pattern,#genes,#matches,percentage\n";
 
 		foreach my $species ( sort keys %$match_count ) {
-			foreach my $pattern_matched (sort keys %{$match_count->{$species}}) {
+			foreach
+			  my $pattern_matched ( sort keys %{ $match_count->{$species} } )
+			{
 				my $p = sprintf( "%8.8f",
-					$match_count->{$species}->{$pattern_matched} / $species_count->{$species} );
+					$match_count->{$species}->{$pattern_matched} /
+					  $species_count->{$species} );
 				print $fh join( ',',
 					$species, $pattern_matched,
 					$species_count->{$species},
 					$match_count->{$species}->{$pattern_matched}, $p )
-			  	. "\n";
+				  . "\n";
 			}
 		}
 		undef $fh;
 	}
-	
+
 	return 1;
 }
 
 sub process_bacteria {
 	my $cache_dir = $_cfg->{cache};
 	my $_seqpats  = $_cfg->{patterns};
-	
+
 	my $column_header = shift;
 	$column_header ||= 0;
-	
+
 	return if file_list_empty( $_cfg->{bacteria_species} );
 
 	my $fnpat =
@@ -207,8 +215,8 @@ sub process_bacteria {
 
 	my $seqpats = join( '|', @$_seqpats );
 	my @seqpats = ($seqpats);
-	@seqpats = @$_seqpats if ($_cfg->{pattern_mode} eq "each");
-	
+	@seqpats = @$_seqpats if ( $_cfg->{pattern_mode} eq "each" );
+
 	foreach my $fn ( sort @fns ) {
 		if ( $fn =~ /$fnpat/ ) {
 			$file_count++;
@@ -234,14 +242,15 @@ sub process_bacteria {
 					  . " in file $fn\n";
 				}
 				$species_count->{$speciesid}++;
-				
+
 				my $seq = $so->seq();
-				
-                                foreach my $_pat (@seqpats) {
-                                        if ( $seq =~ /$_pat/ ) {
-                                                $match_count->{$speciesid}->{$_pat}++;
-                                        }
-                                }
+
+				foreach my $_pat (@seqpats) {
+					$match_count->{$speciesid}->{$_pat} += 0;
+					if ( $seq =~ /$_pat/ ) {
+						$match_count->{$speciesid}->{$_pat}++;
+					}
+				}
 			}
 		}
 	}
@@ -250,17 +259,21 @@ sub process_bacteria {
 
 	my $fh = new IO::File $output_file, "a";
 	if ( defined $fh ) {
-		print $fh "species,pattern,#genes,#matches,percentage\n" unless $column_header;
+		print $fh "species,pattern,#genes,#matches,percentage\n"
+		  unless $column_header;
 
 		foreach my $species ( sort keys %$match_count ) {
-			foreach my $pattern_matched (sort keys %{$match_count->{$species}}) {
+			foreach
+			  my $pattern_matched ( sort keys %{ $match_count->{$species} } )
+			{
 				my $p = sprintf( "%8.8f",
-					$match_count->{$species}->{$pattern_matched} / $species_count->{$species} );
+					$match_count->{$species}->{$pattern_matched} /
+					  $species_count->{$species} );
 				print $fh join( ',',
 					$species, $pattern_matched,
 					$species_count->{$species},
 					$match_count->{$species}->{$pattern_matched}, $p )
-			  	. "\n";
+				  . "\n";
 			}
 		}
 		undef $fh;
@@ -359,7 +372,7 @@ sub cache_nonbacteria {
 	D( 2, "only fetching non-bacterial species that match: $fnpat\n" );
 
 	for my $rd ( sort @ls ) {
-		
+
 		next if $rd =~ /Bacteria/;    # skip bacteria folders
 		next if $rd !~ /$fnpat/;      # dont fetch things we arent interested in
 
@@ -538,38 +551,38 @@ sub new {
 
 sub next {
 	my $self = shift;
-	
+
 	my $line = "";
 
 	my $done = 0;
 	my $desc = '';
-	
+
 	my $fh = $self->{fh};
-	
-	while (!$done && !eof($self->{fh})) {
+
+	while ( !$done && !eof( $self->{fh} ) ) {
 		$line = <$fh>;
-		if ($line =~ /^>(.*)/) {
+		if ( $line =~ /^>(.*)/ ) {
 			$done = 1;
 			$desc = $1;
 		}
 	}
-	
+
 	$done = 0;
 	my @s = ();
-	
-	while (!$done && !eof($self->{fh})) {
+
+	while ( !$done && !eof( $self->{fh} ) ) {
 		$line = <$fh>;
-		if ($line =~ /^>/) {
+		if ( $line =~ /^>/ ) {
 			$done = 1;
-			seek($self->{fh}, SEEK_CUR, -length($line));
+			seek( $self->{fh}, SEEK_CUR, -length($line) );
 		}
 		else {
 			push @s, $line;
 		}
-	}	
+	}
 
-	my $fr = new FastaRecord($desc, join('', @s));
-	
+	my $fr = new FastaRecord( $desc, join( '', @s ) );
+
 }
 
 package FastaRecord;
@@ -579,7 +592,7 @@ sub new {
 	my $self  = {};
 	bless $self, $class;
 	$self->{desc} = shift;
-	$self->{seq} = shift;
+	$self->{seq}  = shift;
 	return $self;
 }
 
