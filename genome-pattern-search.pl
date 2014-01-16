@@ -25,11 +25,15 @@ my $_cfg = {
 	'nonbacteria_species' => ['.*']
 };
 
-my $config_file   = '';
-my $help          = 0;
-my $force_recache = 1;
-my $output_file   = undef;
-my $version       = 0;
+my $config_file      = '';
+my $help             = 0;
+my $force_recache    = 1;
+
+my $output_file      = undef;
+my $output_byspecies = 0;
+my $output_bypattern = 1;
+
+my $version          = 0;
 
 my $gor = GetOptions(
 	"debug|d=i"    => \$_cfg->{debug},
@@ -42,6 +46,8 @@ my $gor = GetOptions(
 	"mode|m=s"     => \$_cfg->{pattern_mode},
 	"force|f"      => \$force_recache,
 	"output|o=s"   => \$output_file,
+	"byspecies|e"  => \$output_byspecies,
+	"bypattern|t"  => \$output_bypattern,
 	"version|v"    => \$version,
 	"help|h|?"     => \$help
 );
@@ -103,16 +109,102 @@ else {
 		  . " old\n" );
 }
 
-my $suppress_column_header = process_nonbacteria();
-process_bacteria($suppress_column_header);
+my $database = process_bacteria(process_nonbacteria());
+
+if ($output_bypattern == 1) {
+	write_bypattern($database);	
+}
+else {
+	write_byspecies($database);
+}
 
 exit 0;
+
+sub uniq {
+    return keys %{{ map { $_ => 1 } @_ }};
+}
+
+sub write_bypattern {
+	my $db = shift;
+	
+	my $fh = new IO::File $output_file, "w";
+	my $output_buffer = {};
+	
+	if ( defined $fh ) {
+		
+		print $fh "species,pattern,#genes,#matches,percentage,species,species,pattern,#genes,#matches,percentage\n";
+
+		foreach my $BorNB ('nonbac', 'bac') {
+			my $match_count = $db->{$BorNB};
+			my $species_count = $db->{"${BorNB}:species_count"};
+			
+			foreach my $species ( sort keys %$match_count ) {
+				foreach my $pattern_matched ( sort keys %{ $match_count->{$species} } )
+				{
+					my $p = sprintf( "%8.8f",
+						$match_count->{$species}->{$pattern_matched} /
+						  $species_count->{$species} );
+					
+					$output_buffer->{$pattern_matched} = "" unless exists $output_buffer->{$pattern_matched};
+					
+					$output_buffer->{$pattern_matched} .= join( ',',
+						$species,
+						$species_count->{$species},
+						$match_count->{$species}->{$pattern_matched}, $p ) . ",";
+				}
+			}
+		}
+		
+		foreach my $pat (sort keys %$output_buffer) {
+			print $fh $pat . "," . $output_buffer->{$pat} . "\n";
+		}
+		
+		undef $fh;
+	}
+	else {
+		die "failed to open $output_file for writing $!"
+	}	
+}
+
+sub write_by_species {
+	my $db = shift;
+	
+	my $fh = new IO::File $output_file, "w";
+	if ( defined $fh ) {
+		print $fh "species,pattern,#genes,#matches,percentage\n";
+
+		foreach my $BorNB ('bac', 'nonbac') {
+			my $match_count = $db->{$BorNB};
+			my $species_count = $db->{"${BorNB}:species_count"};
+			
+			foreach my $species ( sort keys %$match_count ) {
+				foreach my $pattern_matched ( sort keys %{ $match_count->{$species} } )
+				{
+					my $p = sprintf( "%8.8f",
+						$match_count->{$species}->{$pattern_matched} /
+						  $species_count->{$species} );
+					print $fh join( ',',
+						$species, $pattern_matched,
+						$species_count->{$species},
+						$match_count->{$species}->{$pattern_matched}, $p )
+					  . "\n";
+				}
+			}
+		}
+		undef $fh;
+	}
+	else {
+		die "failed to open $output_file for writing $!"
+	}
+}
 
 sub process_nonbacteria {
 	my $cache_dir = $_cfg->{cache};
 	my $_seqpats  = $_cfg->{patterns};
 
-	return 0 if file_list_empty( $_cfg->{nonbacteria_species} );
+	my $db = { };
+	
+	return $db if file_list_empty( $_cfg->{nonbacteria_species} );
 
 	my $fnpat =
 	  '^nonbac:(' . join( '|', @{ $_cfg->{nonbacteria_species} } ) . ')$';
@@ -168,38 +260,19 @@ sub process_nonbacteria {
 
 	D( 1, "nonbac filecount=$file_count seq_count=$seq_count\n" );
 
-	my $fh = new IO::File $output_file, "w";
-	if ( defined $fh ) {
-		print $fh "species,pattern,#genes,#matches,percentage\n";
-
-		foreach my $species ( sort keys %$match_count ) {
-			foreach
-			  my $pattern_matched ( sort keys %{ $match_count->{$species} } )
-			{
-				my $p = sprintf( "%8.8f",
-					$match_count->{$species}->{$pattern_matched} /
-					  $species_count->{$species} );
-				print $fh join( ',',
-					$species, $pattern_matched,
-					$species_count->{$species},
-					$match_count->{$species}->{$pattern_matched}, $p )
-				  . "\n";
-			}
-		}
-		undef $fh;
-	}
-
-	return 1;
+	$db->{'nonbac'} = $match_count;
+	$db->{'nonbac:species_count'} = $species_count;
+	
+	return $db;
 }
 
 sub process_bacteria {
 	my $cache_dir = $_cfg->{cache};
 	my $_seqpats  = $_cfg->{patterns};
 
-	my $column_header = shift;
-	$column_header ||= 0;
-
-	return if file_list_empty( $_cfg->{bacteria_species} );
+	my $db = shift;
+	
+	return $db if file_list_empty( $_cfg->{bacteria_species} );
 
 	my $fnpat =
 	  '^bacteria:(' . join( '|', @{ $_cfg->{bacteria_species} } ) . ')$';
@@ -256,29 +329,11 @@ sub process_bacteria {
 	}
 
 	D( 1, "bac filecount=$file_count seq_count=$seq_count\n" );
-
-	my $fh = new IO::File $output_file, "a";
-	if ( defined $fh ) {
-		print $fh "species,pattern,#genes,#matches,percentage\n"
-		  unless $column_header;
-
-		foreach my $species ( sort keys %$match_count ) {
-			foreach
-			  my $pattern_matched ( sort keys %{ $match_count->{$species} } )
-			{
-				my $p = sprintf( "%8.8f",
-					$match_count->{$species}->{$pattern_matched} /
-					  $species_count->{$species} );
-				print $fh join( ',',
-					$species, $pattern_matched,
-					$species_count->{$species},
-					$match_count->{$species}->{$pattern_matched}, $p )
-				  . "\n";
-			}
-		}
-		undef $fh;
-	}
-
+	
+	$db->{'bac'} = $match_count;
+	$db->{'bac:species_count'} = $species_count;
+	
+	return $db;
 }
 
 sub file_list_empty {
@@ -515,6 +570,9 @@ sub usage {
 	print "$0 [options] <-o outputfile> [pattern] [pattern] [...]\n
 	--output <file>   file to write results to (required; shortcut -o) **REQUIRED
 
+	--bypattern		  group output by pattern (default)
+	--byspecies		  group output by species
+	
 	--debug #         verbose output (shortcut: -d)
 	--config <file>   use this file instead of command line options (shortcut: -C)
 	--cache <dir>     cache folder (shortcut -c)
