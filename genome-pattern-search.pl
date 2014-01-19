@@ -141,7 +141,7 @@ sub write_bypattern {
 	
 	if ( defined $fh ) {
 		
-		print $fh "species,pattern,#genes,#matches,percentage,species,species,pattern,#genes,#matches,percentage\n";
+		print $fh "pattern,species,#genes,#matches,percentage,species,#genes,#matches,percentage\n";
 
 		foreach my $BorNB ('nonbac', 'bac') {
 			my $match_count = $db->{$BorNB};
