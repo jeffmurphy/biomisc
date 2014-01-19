@@ -10,7 +10,7 @@ use Data::Dumper;
 use IO::File;
 use IO::Uncompress::AnyUncompress;
 
-my $VERSION = 2013072401;
+my $VERSION = 2014011801;
 
 my $_cfg = {
 	'cache'               => "/tmp/nihprots",
@@ -22,7 +22,9 @@ my $_cfg = {
 	'patterns'            => [],
 	'pattern_mode'        => 'any',
 	'bacteria_species'    => [''],
-	'nonbacteria_species' => ['.*']
+	'nonbacteria_species' => ['.*'],
+	'output_byspecies'    => 0,
+	'output_bypattern'    => 1
 };
 
 my $config_file      = '';
@@ -46,13 +48,15 @@ my $gor = GetOptions(
 	"mode|m=s"     => \$_cfg->{pattern_mode},
 	"force|f"      => \$force_recache,
 	"output|o=s"   => \$output_file,
-	"byspecies|e"  => \$output_byspecies,
-	"bypattern|t"  => \$output_bypattern,
+	"byspecies"    => \$output_byspecies,
+	"bypattern"    => \$output_bypattern,
 	"version|v"    => \$version,
 	"help|h|?"     => \$help
 );
 
 die "$VERSION\n" if $version;
+
+$output_bypattern = 0 if $output_byspecies;
 
 usage() if ( $help || !defined($output_file) );
 
@@ -61,10 +65,13 @@ if ( $config_file && -r $config_file ) {
 
 	foreach my $_scalar (
 		'cache', 'debug', 'cache_lifespan', 'url',
-		'user',  'pass',  'pattern_mode'
+		'user',  'pass',  'pattern_mode', 'byspecies', 'bypattern'
 	  )
 	{
-		$_cfg->{$_scalar} = $cfg->param($_scalar) if ( $cfg->param($_scalar) );
+		if ( $cfg->param($_scalar) ) {
+			D(1, "assigning $_scalar to cfg based on $config_file contents\n");
+			$_cfg->{$_scalar} = $cfg->param($_scalar);
+		}
 	}
 
 	foreach
@@ -112,9 +119,11 @@ else {
 my $database = process_bacteria(process_nonbacteria());
 
 if ($output_bypattern == 1) {
+	D(1, "output_bypattern\n");
 	write_bypattern($database);	
 }
 else {
+	D(1, "output_byspecies\n");
 	write_byspecies($database);
 }
 
@@ -166,8 +175,10 @@ sub write_bypattern {
 	}	
 }
 
-sub write_by_species {
+sub write_byspecies {
 	my $db = shift;
+	
+	D(1, "writing to $output_file\n");
 	
 	my $fh = new IO::File $output_file, "w";
 	if ( defined $fh ) {
@@ -196,6 +207,23 @@ sub write_by_species {
 	else {
 		die "failed to open $output_file for writing $!"
 	}
+}
+
+sub extract_species {
+	my $desc = shift;
+	my $fn = shift;
+	
+	# match simple case where it's encoded as [...]
+	if ( $desc =~ /\[([^\[\]]+)\]$/ ) {
+		return $1;
+	}
+	
+	# match [...[...]...] case
+	if ( $desc =~ /\[(.*)\]$/g ) {
+		return $1;
+	}
+	
+	die "cant parse out [species] from \n\"" . $desc . "\"\n in file $fn\n";
 }
 
 sub process_nonbacteria {
@@ -235,15 +263,7 @@ sub process_nonbacteria {
 				$seq_count++;
 				my $desc = $so->desc();
 
-				#print "$desc\n";
-				if ( $desc =~ /\[([^\[\]]+)\]$/ ) {
-					$speciesid = $1;
-				}
-				else {
-					die "cant parse out [species] from "
-					  . $so->desc()
-					  . " in file $fn\n";
-				}
+				$speciesid = extract_species($desc, $fn);
 
 				$species_count->{$speciesid}++;
 				my $seq = $so->seq();
@@ -306,14 +326,8 @@ sub process_bacteria {
 				$seq_count++;
 				my $desc = $so->desc();
 
-				if ( $desc =~ /\[([^\[\]]+)\]$/ ) {
-					$speciesid = $1;
-				}
-				else {
-					die "cant parse out [species] from "
-					  . $so->desc()
-					  . " in file $fn\n";
-				}
+				$speciesid = extract_species($desc, $fn);
+
 				$species_count->{$speciesid}++;
 
 				my $seq = $so->seq();
