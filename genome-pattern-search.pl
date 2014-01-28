@@ -10,7 +10,7 @@ use Data::Dumper;
 use IO::File;
 use IO::Uncompress::AnyUncompress;
 
-my $VERSION = 2014011801;
+my $VERSION = 2014012701;
 
 my $_cfg = {
 	'cache'               => "/tmp/nihprots",
@@ -209,19 +209,32 @@ sub write_byspecies {
 	}
 }
 
+sub sqz {
+	my $s = shift;
+	$s =~ s/\s\s+/\ /g;
+	$s =~ s/\s+$//g;
+	$s =~ s/^\s+//g;
+	return $s;
+}
+
 sub extract_species {
 	my $desc = shift;
 	my $fn = shift;
 	
 	# match simple case where it's encoded as [...]
 	if ( $desc =~ /\[([^\[\]]+)\]$/ ) {
-		return $1;
+		return sqz($1);
 	}
 	
 	# match [...[...]...] case
 	if ( $desc =~ /\[(.*)\]$/g ) {
-		return $1;
+		return sqz($1);
 	}
+
+	# match simple case + typo such as > foo|bar|hihi (whoopse]
+	if ( $desc =~ /\(([^\[\]]+)\]$/ ) {
+                return sqz($1);
+        }
 	
 	die "cant parse out [species] from \n\"" . $desc . "\"\n in file $fn\n";
 }
